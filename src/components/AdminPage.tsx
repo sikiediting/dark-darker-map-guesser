@@ -31,6 +31,7 @@ export default function AdminPage() {
   const [screenshotFile, setScreenshotFile] = useState<File | null>(null);
   const [mapPreview, setMapPreview] = useState<string>('');
   const [targetLocation, setTargetLocation] = useState<{ x: number; y: number } | null>(null);
+  const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     if (authenticated) {
@@ -38,7 +39,6 @@ export default function AdminPage() {
     }
   }, [authenticated]);
 
-  // PASSWORD CHANGED TO: sikibog1
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     if (password === 'sikibog1') {
@@ -80,23 +80,30 @@ export default function AdminPage() {
   };
 
   const handleMapClick = (x: number, y: number) => {
-    console.log('Admin Click Debug:', { x, y });
     setTargetLocation({ x, y });
   };
 
-  const uploadFile = async (file: File, folder: string): Promise<string> => {
-    const fileExt = file.name.split('.').pop();
-    const fileName = `${folder}/${Date.now()}.${fileExt}`;
+  // Upload to Cloudinary instead of Supabase Storage
+  const uploadToCloudinary = async (file: File, folder: string): Promise<string> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('upload_preset', import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET);
+    formData.append('folder', `dark-darker/${folder}`);
 
-    const { error: uploadError } = await supabase.storage
-      .from('game-images')
-      .upload(fileName, file);
+    const response = await fetch(
+      `https://api.cloudinary.com/v1_1/${import.meta.env.VITE_CLOUDINARY_CLOUD_NAME}/image/upload`,
+      {
+        method: 'POST',
+        body: formData,
+      }
+    );
 
-    if (uploadError) throw uploadError;
+    if (!response.ok) {
+      throw new Error('Failed to upload to Cloudinary');
+    }
 
-    const { data: { publicUrl } } = supabase.storage.from('game-images').getPublicUrl(fileName);
-
-    return publicUrl;
+    const data = await response.json();
+    return data.secure_url;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -107,19 +114,15 @@ export default function AdminPage() {
       return;
     }
 
+    setUploading(true);
     setLoading(true);
 
     try {
-      const mapUrl = await uploadFile(mapFile, 'maps');
-      const screenshotUrl = await uploadFile(screenshotFile, 'screenshots');
+      // Upload both images to Cloudinary
+      const mapUrl = await uploadToCloudinary(mapFile, 'maps');
+      const screenshotUrl = await uploadToCloudinary(screenshotFile, 'screenshots');
 
       const mapScale = calculateMapScale(gridSize);
-
-      console.log('Saving level:', {
-        target_x: targetLocation.x,
-        target_y: targetLocation.y,
-        map_scale_meters: mapScale
-      });
 
       const { error } = await supabase.from('levels').insert({
         map_image_url: mapUrl,
@@ -145,9 +148,10 @@ export default function AdminPage() {
       loadLevels();
     } catch (error) {
       console.error('Error creating level:', error);
-      alert('Error creating level');
+      alert('Error creating level: ' + (error as any).message);
     } finally {
       setLoading(false);
+      setUploading(false);
     }
   };
 
@@ -327,10 +331,10 @@ export default function AdminPage() {
 
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || uploading}
                 className="w-full py-3 bg-red text-white font-bold rounded-lg hover:bg-red/90 transition-all disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px]"
               >
-                {loading ? 'Creating...' : 'Create Level'}
+                {uploading ? 'Uploading Images...' : loading ? 'Creating...' : 'Create Level'}
               </button>
             </form>
           </div>
