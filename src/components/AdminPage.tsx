@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Home, Trash2, Upload } from 'lucide-react';
-import { supabase, Level, MapType } from '../lib/supabase';
-import { calculateMapScale, getMapTypeName } from '../lib/utils';
+import { db } from '../lib/firebase';
+import { collection, addDoc, getDocs, deleteDoc, doc, query, orderBy } from 'firebase/firestore';
 import InteractiveMap from './InteractiveMap';
 
-const MAP_TYPES: { value: MapType; label: string; color: string }[] = [
+const MAP_TYPES: { value: string; label: string; color: string }[] = [
   { value: 'ruins', label: 'Ancient Ruins', color: '#d4af37' },
   { value: 'goblin', label: 'Goblin Caves', color: '#22c55e' },
   { value: 'ice', label: 'Ice Caverns', color: '#3b82f6' },
@@ -21,11 +21,11 @@ export default function AdminPage() {
   const navigate = useNavigate();
   const [authenticated, setAuthenticated] = useState(false);
   const [password, setPassword] = useState('');
-  const [levels, setLevels] = useState<Level[]>([]);
+  const [levels, setLevels] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
 
   const [mapName, setMapName] = useState('');
-  const [mapType, setMapType] = useState<MapType>('ruins');
+  const [mapType, setMapType] = useState('ruins');
   const [gridSize, setGridSize] = useState(5);
   const [mapFile, setMapFile] = useState<File | null>(null);
   const [screenshotFile, setScreenshotFile] = useState<File | null>(null);
@@ -50,13 +50,10 @@ export default function AdminPage() {
 
   const loadLevels = async () => {
     try {
-      const { data, error } = await supabase
-        .from('levels')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      setLevels(data || []);
+      const q = query(collection(db, 'levels'), orderBy('created_at', 'desc'));
+      const querySnapshot = await getDocs(q);
+      const levelsData = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setLevels(levelsData);
     } catch (error) {
       console.error('Error loading levels:', error);
     }
@@ -83,7 +80,6 @@ export default function AdminPage() {
     setTargetLocation({ x, y });
   };
 
-  // Upload to Cloudinary instead of Supabase Storage
   const uploadToCloudinary = async (file: File, folder: string): Promise<string> => {
     const formData = new FormData();
     formData.append('file', file);
@@ -118,13 +114,12 @@ export default function AdminPage() {
     setLoading(true);
 
     try {
-      // Upload both images to Cloudinary
       const mapUrl = await uploadToCloudinary(mapFile, 'maps');
       const screenshotUrl = await uploadToCloudinary(screenshotFile, 'screenshots');
 
-      const mapScale = calculateMapScale(gridSize);
+      const mapScale = GRID_SIZES.find(s => s.value === gridSize)?.scale || 150;
 
-      const { error } = await supabase.from('levels').insert({
+      await addDoc(collection(db, 'levels'), {
         map_image_url: mapUrl,
         screenshot_url: screenshotUrl,
         target_x: targetLocation.x,
@@ -133,9 +128,8 @@ export default function AdminPage() {
         map_type: mapType,
         grid_size: gridSize,
         map_scale_meters: mapScale,
+        created_at: new Date().toISOString(),
       });
-
-      if (error) throw error;
 
       alert('Level created successfully!');
       setMapName('');
@@ -155,14 +149,11 @@ export default function AdminPage() {
     }
   };
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (id: string) => {
     if (!confirm('Are you sure you want to delete this level?')) return;
 
     try {
-      const { error } = await supabase.from('levels').delete().eq('id', id);
-
-      if (error) throw error;
-
+      await deleteDoc(doc(db, 'levels', id));
       alert('Level deleted successfully!');
       loadLevels();
     } catch (error) {
@@ -241,7 +232,7 @@ export default function AdminPage() {
                   <label className="block text-white mb-2">Map Type</label>
                   <select
                     value={mapType}
-                    onChange={(e) => setMapType(e.target.value as MapType)}
+                    onChange={(e) => setMapType(e.target.value)}
                     className="w-full px-4 py-3 bg-black/50 border border-gold/50 rounded-lg text-white focus:outline-none focus:border-gold min-h-[44px]"
                   >
                     {MAP_TYPES.map((type) => (
@@ -352,10 +343,7 @@ export default function AdminPage() {
                   <div className="flex-1">
                     <h3 className="font-semibold text-white">{level.map_name}</h3>
                     <p className="text-sm text-gray-400">
-                      {getMapTypeName(level.map_type)} • {level.grid_size}×{level.grid_size} ({level.map_scale_meters}m)
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      Target: ({level.target_x.toFixed(1)}%, {level.target_y.toFixed(1)}%)
+                      {level.map_type} • {level.grid_size}×{level.grid_size} ({level.map_scale_meters}m)
                     </p>
                   </div>
                   <button

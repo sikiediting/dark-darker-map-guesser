@@ -1,8 +1,24 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Play, Trophy, Map, ChevronRight } from 'lucide-react';
-import { supabase, LeaderboardEntry } from '../lib/supabase';
-import { getMapTypeName, getMapTypeColor } from '../lib/utils';
+import { db } from '../lib/firebase';
+import { collection, getDocs, query, orderBy, limit } from 'firebase/firestore';
+
+interface LeaderboardEntry {
+  id: string;
+  player_name: string;
+  total_score: number;
+  map_type: string;
+  rounds_completed: number;
+  created_at: string;
+}
+
+const MAP_TYPES: { [key: string]: string } = {
+  ruins: 'Ancient Ruins',
+  goblin: 'Goblin Caves',
+  ice: 'Ice Caverns',
+  all: 'Mixed Maps',
+};
 
 export default function HomePage() {
   const navigate = useNavigate();
@@ -15,14 +31,17 @@ export default function HomePage() {
 
   const loadTopScores = async () => {
     try {
-      const { data, error } = await supabase
-        .from('leaderboard')
-        .select('*')
-        .order('total_score', { ascending: false })
-        .limit(10);
-
-      if (error) throw error;
-      setTopScores(data || []);
+      const q = query(
+        collection(db, 'leaderboard'),
+        orderBy('total_score', 'desc'),
+        limit(10)
+      );
+      const querySnapshot = await getDocs(q);
+      const scores = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as LeaderboardEntry[];
+      setTopScores(scores);
     } catch (error) {
       console.error('Error loading leaderboard:', error);
     } finally {
@@ -122,7 +141,7 @@ export default function HomePage() {
                     <div>
                       <div className="font-semibold text-white">{entry.player_name}</div>
                       <div className="text-xs text-gray-400">
-                        {getMapTypeName(entry.map_type)} • {entry.rounds_completed} rounds
+                        {MAP_TYPES[entry.map_type] || entry.map_type} • {entry.rounds_completed} rounds
                       </div>
                     </div>
                   </div>

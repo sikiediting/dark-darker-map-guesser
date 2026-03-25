@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Home, RotateCcw, Play, MapIcon, Maximize2, Minimize2, Trophy, Target, Volume2, VolumeX } from 'lucide-react';
-import { supabase, Level, MapType } from '../lib/supabase';
+import { db } from '../lib/firebase';
+import { collection, getDocs, addDoc, query, orderBy, limit } from 'firebase/firestore';
 import { calculateDistancePercent, calculateDistanceMeters, calculateScore, getMapTypeName, getMapTypeColor, getScoreColor, getScoreBorderColor } from '../lib/utils';
 import InteractiveMap from './InteractiveMap';
 
-const MAP_TYPES: { value: MapType | 'all'; label: string; description: string; color: string }[] = [
+const MAP_TYPES: { value: string | 'all'; label: string; description: string; color: string }[] = [
   { value: 'ruins', label: 'Ancient Ruins', description: 'Explore forgotten temples', color: '#d4af37' },
   { value: 'goblin', label: 'Goblin Caves', description: 'Navigate dark caverns', color: '#22c55e' },
   { value: 'ice', label: 'Ice Caverns', description: 'Brave the frozen depths', color: '#3b82f6' },
@@ -25,8 +26,8 @@ const SOUNDS = {
 export default function GamePage() {
   const navigate = useNavigate();
   const [gameState, setGameState] = useState<'menu' | 'playing' | 'finished'>('menu');
-  const [selectedMapType, setSelectedMapType] = useState<MapType | 'all'>('all');
-  const [level, setLevel] = useState<Level | null>(null);
+  const [selectedMapType, setSelectedMapType] = useState<string | 'all'>('all');
+  const [level, setLevel] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [userGuess, setUserGuess] = useState<{ x: number; y: number } | null>(null);
   const [hasSubmitted, setHasSubmitted] = useState(false);
@@ -38,32 +39,29 @@ export default function GamePage() {
   const [currentRound, setCurrentRound] = useState(1);
   const [totalScore, setTotalScore] = useState(0);
   const [roundScores, setRoundScores] = useState<number[]>([]);
-  const [usedLevelIds, setUsedLevelIds] = useState<number[]>([]);
+  const [usedLevelIds, setUsedLevelIds] = useState<string[]>([]);
   
   const [playerName, setPlayerName] = useState('');
   const [savingScore, setSavingScore] = useState(false);
   
   // Sound state
   const [isMuted, setIsMuted] = useState(false);
-  const [volume, setVolume] = useState(10); // 50% default volume
+  const [volume, setVolume] = useState(10); // 10% default volume
   const bgMusicRef = useRef<HTMLAudioElement | null>(null);
   const greenSoundRef = useRef<HTMLAudioElement | null>(null);
   const timmySoundRef = useRef<HTMLAudioElement | null>(null);
 
   // Initialize sounds
   useEffect(() => {
-    // Background music - 50% LOWER (15% of master volume instead of 30%)
     bgMusicRef.current = new Audio(SOUNDS.bgMusic);
     bgMusicRef.current.loop = true;
-    bgMusicRef.current.volume = (volume / 100) * 0.15; // 15% volume (50% lower)
+    bgMusicRef.current.volume = (volume / 100) * 0.15;
     
-    // Green/Perfect sound (4000+ points) - 30% LOUDER
     greenSoundRef.current = new Audio(SOUNDS.green);
-    greenSoundRef.current.volume = Math.min(1, (volume / 100) * 1.3); // 130% volume (capped at 100%)
+    greenSoundRef.current.volume = Math.min(1, (volume / 100) * 1.3);
     
-    // Timmy sound (under 4000 points) - 30% LOUDER
     timmySoundRef.current = new Audio(SOUNDS.timmy);
-    timmySoundRef.current.volume = Math.min(1, (volume / 100) * 1.3); // 130% volume (capped at 100%)
+    timmySoundRef.current.volume = Math.min(1, (volume / 100) * 1.3);
 
     return () => {
       if (bgMusicRef.current) {
@@ -77,13 +75,13 @@ export default function GamePage() {
   useEffect(() => {
     const vol = volume / 100;
     if (bgMusicRef.current) {
-      bgMusicRef.current.volume = vol * 0.15; // 50% lower
+      bgMusicRef.current.volume = vol * 0.15;
     }
     if (greenSoundRef.current) {
-      greenSoundRef.current.volume = Math.min(1, vol * 1.3); // 30% louder
+      greenSoundRef.current.volume = Math.min(1, vol * 1.3);
     }
     if (timmySoundRef.current) {
-      timmySoundRef.current.volume = Math.min(1, vol * 1.3); // 30% louder
+      timmySoundRef.current.volume = Math.min(1, vol * 1.3);
     }
   }, [volume]);
 
@@ -120,27 +118,31 @@ export default function GamePage() {
     setShowResults(false);
 
     try {
-      let query = supabase.from('levels').select('*');
-      
-      if (selectedMapType !== 'all') {
-        query = query.eq('map_type', selectedMapType);
-      }
+      const q = query(collection(db, 'levels'));
+      const querySnapshot = await getDocs(q);
+      const allLevels = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-      const { data, error } = await query;
-
-      if (error) throw error;
-
-      if (!data || data.length === 0) {
+      if (allLevels.length === 0) {
         console.log('No levels found');
         setLevel(null);
         return;
       }
 
-      const availableLevels = data.filter((level: Level) => !usedLevelIds.includes(level.id));
+      let filteredLevels = allLevels;
+      if (selectedMapType !== 'all') {
+        filteredLevels = allLevels.filter((level: any) => level.map_type === selectedMapType);
+      }
+
+      if (filteredLevels.length === 0) {
+        setLevel(null);
+        return;
+      }
+
+      const availableLevels = filteredLevels.filter((level: any) => !usedLevelIds.includes(level.id));
 
       if (availableLevels.length === 0) {
-        const randomIndex = Math.floor(Math.random() * data.length);
-        setLevel(data[randomIndex]);
+        const randomIndex = Math.floor(Math.random() * filteredLevels.length);
+        setLevel(filteredLevels[randomIndex]);
       } else {
         const randomIndex = Math.floor(Math.random() * availableLevels.length);
         const newLevel = availableLevels[randomIndex];
@@ -156,7 +158,7 @@ export default function GamePage() {
     }
   };
 
-  const handleStartGame = (mapType: MapType | 'all') => {
+  const handleStartGame = (mapType: string | 'all') => {
     setSelectedMapType(mapType);
     setCurrentRound(1);
     setTotalScore(0);
@@ -189,11 +191,10 @@ export default function GamePage() {
     setShowResults(true);
     setMapExpanded(true);
 
-    // Play sound based on score
     if (calculatedScore >= 4000) {
-      playSound('green'); // Green for good scores
+      playSound('green');
     } else {
-      playSound('timmy'); // Timmy for everything else
+      playSound('timmy');
     }
 
     const newTotal = totalScore + calculatedScore;
@@ -239,13 +240,13 @@ export default function GamePage() {
     if (!playerName.trim()) return;
     setSavingScore(true);
     try {
-      const { error } = await supabase.from('leaderboard').insert({
+      await addDoc(collection(db, 'leaderboard'), {
         player_name: playerName.trim(),
         total_score: totalScore,
         map_type: selectedMapType,
         rounds_completed: TOTAL_ROUNDS,
+        created_at: new Date().toISOString(),
       });
-      if (error) throw error;
       alert('Score saved to leaderboard!');
       setPlayerName('');
     } catch (error) {
@@ -282,7 +283,7 @@ export default function GamePage() {
             {MAP_TYPES.map((type) => (
               <button
                 key={type.value}
-                onClick={() => handleStartGame(type.value as MapType | 'all')}
+                onClick={() => handleStartGame(type.value as string | 'all')}
                 className="group relative p-6 rounded-xl border-2 transition-all duration-300 hover:scale-105 hover:shadow-lg"
                 style={{ borderColor: type.color + '40', backgroundColor: type.color + '10' }}
               >

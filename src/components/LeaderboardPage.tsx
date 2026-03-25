@@ -1,29 +1,49 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Home, Trophy, Search } from 'lucide-react';
-import { supabase, LeaderboardEntry } from '../lib/supabase';
+import { Home, Trophy, Medal } from 'lucide-react';
+import { db } from '../lib/firebase';
+import { collection, getDocs, query, orderBy, limit } from 'firebase/firestore';
 import { getMapTypeName, getMapTypeColor } from '../lib/utils';
+
+interface LeaderboardEntry {
+  id: string;
+  player_name: string;
+  total_score: number;
+  map_type: string;
+  rounds_completed: number;
+  created_at: string;
+}
 
 export default function LeaderboardPage() {
   const navigate = useNavigate();
-  const [allScores, setAllScores] = useState<LeaderboardEntry[]>([]);
+  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterMapType, setFilterMapType] = useState<string>('all');
+  const [filter, setFilter] = useState<string>('all');
 
   useEffect(() => {
-    loadAllScores();
-  }, []);
+    loadLeaderboard();
+  }, [filter]);
 
-  const loadAllScores = async () => {
+  const loadLeaderboard = async () => {
+    setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('leaderboard')
-        .select('*')
-        .order('total_score', { ascending: false });
+      let q = query(
+        collection(db, 'leaderboard'),
+        orderBy('total_score', 'desc'),
+        limit(100)
+      );
 
-      if (error) throw error;
-      setAllScores(data || []);
+      const querySnapshot = await getDocs(q);
+      let entries = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as LeaderboardEntry[];
+
+      if (filter !== 'all') {
+        entries = entries.filter(entry => entry.map_type === filter);
+      }
+
+      setLeaderboard(entries);
     } catch (error) {
       console.error('Error loading leaderboard:', error);
     } finally {
@@ -31,15 +51,17 @@ export default function LeaderboardPage() {
     }
   };
 
-  const filteredScores = allScores.filter((entry) => {
-    const matchesSearch = entry.player_name.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesMapType = filterMapType === 'all' || entry.map_type === filterMapType;
-    return matchesSearch && matchesMapType;
-  });
+  const getRankIcon = (index: number) => {
+    if (index === 0) return <Medal className="w-6 h-6 text-yellow-500" />;
+    if (index === 1) return <Medal className="w-6 h-6 text-gray-400" />;
+    if (index === 2) return <Medal className="w-6 h-6 text-orange-600" />;
+    return <span className="w-6 h-6 flex items-center justify-center text-gray-500 font-bold">{index + 1}</span>;
+  };
 
   return (
     <div className="min-h-screen bg-dark text-white p-4">
       <div className="container mx-auto max-w-4xl">
+        {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <button
             onClick={() => navigate('/')}
@@ -47,98 +69,119 @@ export default function LeaderboardPage() {
           >
             <Home className="w-6 h-6 text-gold" />
           </button>
-          <h1 className="text-3xl font-bold text-gold flex items-center gap-2">
-            <Trophy className="w-8 h-8" />
-            Leaderboard
-          </h1>
+          <div className="flex items-center gap-3">
+            <Trophy className="w-8 h-8 text-gold" />
+            <h1 className="text-3xl font-bold text-gold">Leaderboard</h1>
+          </div>
           <div className="w-10"></div>
         </div>
 
-        <div className="bg-black/30 border border-gold/30 rounded-xl p-4 mb-6 space-y-4">
-          <div className="flex gap-4">
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Search player..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 bg-black/50 border border-gold/50 rounded-lg text-white focus:outline-none focus:border-gold"
-              />
-            </div>
-            <select
-              value={filterMapType}
-              onChange={(e) => setFilterMapType(e.target.value)}
-              className="px-4 py-2 bg-black/50 border border-gold/50 rounded-lg text-white focus:outline-none focus:border-gold"
-            >
-              <option value="all">All Maps</option>
-              <option value="ruins">Ancient Ruins</option>
-              <option value="goblin">Goblin Caves</option>
-              <option value="ice">Ice Caverns</option>
-              <option value="all">Mixed Maps</option>
-            </select>
-          </div>
-          <div className="text-gray-400 text-sm">
-            Showing {filteredScores.length} of {allScores.length} scores
-          </div>
+        {/* Filter */}
+        <div className="flex items-center justify-center gap-2 mb-8">
+          <button
+            onClick={() => setFilter('all')}
+            className={`px-4 py-2 rounded-lg font-semibold transition-all ${
+              filter === 'all'
+                ? 'bg-gold text-dark'
+                : 'bg-black/50 text-gray-400 hover:text-white'
+            }`}
+          >
+            All Maps
+          </button>
+          <button
+            onClick={() => setFilter('ruins')}
+            className={`px-4 py-2 rounded-lg font-semibold transition-all ${
+              filter === 'ruins'
+                ? 'bg-gold text-dark'
+                : 'bg-black/50 text-gray-400 hover:text-white'
+            }`}
+          >
+            Ruins
+          </button>
+          <button
+            onClick={() => setFilter('goblin')}
+            className={`px-4 py-2 rounded-lg font-semibold transition-all ${
+              filter === 'goblin'
+                ? 'bg-gold text-dark'
+                : 'bg-black/50 text-gray-400 hover:text-white'
+            }`}
+          >
+            Goblin
+          </button>
+          <button
+            onClick={() => setFilter('ice')}
+            className={`px-4 py-2 rounded-lg font-semibold transition-all ${
+              filter === 'ice'
+                ? 'bg-gold text-dark'
+                : 'bg-black/50 text-gray-400 hover:text-white'
+            }`}
+          >
+            Ice
+          </button>
         </div>
 
+        {/* Leaderboard Table */}
         <div className="bg-black/30 border border-gold/30 rounded-xl overflow-hidden">
+          {/* Table Header */}
+          <div className="grid grid-cols-12 gap-4 p-4 bg-gold/20 border-b border-gold/30 font-bold text-gold">
+            <div className="col-span-1 text-center">Rank</div>
+            <div className="col-span-4">Player</div>
+            <div className="col-span-3">Map Type</div>
+            <div className="col-span-2 text-center">Rounds</div>
+            <div className="col-span-2 text-right">Score</div>
+          </div>
+
+          {/* Table Body */}
           {loading ? (
-            <div className="text-center text-gray-400 py-16">Loading...</div>
-          ) : filteredScores.length === 0 ? (
-            <div className="text-center text-gray-400 py-16">No scores found</div>
+            <div className="p-8 text-center text-gray-400">
+              <div className="w-8 h-8 border-4 border-gold border-t-transparent rounded-full animate-spin mx-auto"></div>
+              <p className="mt-4">Loading leaderboard...</p>
+            </div>
+          ) : leaderboard.length === 0 ? (
+            <div className="p-8 text-center text-gray-400">
+              <Trophy className="w-16 h-16 mx-auto mb-4 opacity-50" />
+              <p>No scores yet. Be the first to play!</p>
+            </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-black/50">
-                  <tr>
-                    <th className="px-4 py-3 text-left text-gold font-semibold">#</th>
-                    <th className="px-4 py-3 text-left text-gold font-semibold">Player</th>
-                    <th className="px-4 py-3 text-left text-gold font-semibold">Map Type</th>
-                    <th className="px-4 py-3 text-left text-gold font-semibold">Rounds</th>
-                    <th className="px-4 py-3 text-left text-gold font-semibold">Score</th>
-                    <th className="px-4 py-3 text-left text-gold font-semibold">Date</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredScores.map((entry, index) => (
-                    <tr key={entry.id} className="border-t border-gold/20 hover:bg-white/5 transition-colors">
-                      <td className="px-4 py-3">
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold ${
-                          index === 0 ? 'bg-yellow-500 text-black' :
-                          index === 1 ? 'bg-gray-400 text-black' :
-                          index === 2 ? 'bg-orange-600 text-white' :
-                          'bg-gray-700 text-white'
-                        }`}>
-                          {index + 1}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 font-semibold">{entry.player_name}</td>
-                      <td className="px-4 py-3">
-                        <span
-                          className="px-3 py-1 rounded-full text-sm font-semibold"
-                          style={{
-                            backgroundColor: getMapTypeColor(entry.map_type) + '33',
-                            color: getMapTypeColor(entry.map_type)
-                          }}
-                        >
-                          {getMapTypeName(entry.map_type)}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-gray-400">{entry.rounds_completed}</td>
-                      <td className="px-4 py-3 text-gold font-bold text-lg">
-                        {entry.total_score.toLocaleString()}
-                      </td>
-                      <td className="px-4 py-3 text-gray-400 text-sm">
-                        {new Date(entry.created_at).toLocaleDateString()}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="divide-y divide-gold/20">
+              {leaderboard.map((entry, index) => (
+                <div
+                  key={entry.id}
+                  className="grid grid-cols-12 gap-4 p-4 items-center hover:bg-white/5 transition-colors"
+                >
+                  <div className="col-span-1 flex justify-center">
+                    {getRankIcon(index)}
+                  </div>
+                  <div className="col-span-4">
+                    <div className="font-semibold text-white">{entry.player_name}</div>
+                  </div>
+                  <div className="col-span-3">
+                    <span
+                      className="px-3 py-1 rounded-full text-xs font-semibold"
+                      style={{
+                        backgroundColor: getMapTypeColor(entry.map_type) + '20',
+                        color: getMapTypeColor(entry.map_type)
+                      }}
+                    >
+                      {getMapTypeName(entry.map_type)}
+                    </span>
+                  </div>
+                  <div className="col-span-2 text-center text-gray-400">
+                    {entry.rounds_completed}
+                  </div>
+                  <div className="col-span-2 text-right font-bold text-gold">
+                    {entry.total_score.toLocaleString()}
+                  </div>
+                </div>
+              ))}
             </div>
           )}
+        </div>
+
+        {/* Footer Info */}
+        <div className="mt-8 text-center text-gray-500 text-sm">
+          <p>🏆 Top 100 scores displayed</p>
+          <p>📊 Filter by map type to see specific rankings</p>
         </div>
       </div>
     </div>
