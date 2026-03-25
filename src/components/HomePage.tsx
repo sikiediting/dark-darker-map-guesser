@@ -75,7 +75,7 @@ export default function HomePage() {
 
         {/* Play Button */}
         <button
-          onClick={() => navigate('/play')}
+          onClick={() => navigate('/game')}
           className="w-full py-5 bg-red text-white text-2xl font-bold rounded-xl hover:bg-red/90 transition-all transform hover:scale-105 shadow-lg flex items-center justify-center gap-3 mb-8"
         >
           <Play className="w-8 h-8" />

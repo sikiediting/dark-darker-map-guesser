@@ -45,7 +45,7 @@ export default function GamePage() {
   
   // Sound state
   const [isMuted, setIsMuted] = useState(false);
-  const [volume, setVolume] = useState(50); // 50% default volume
+  const [volume, setVolume] = useState(10); // 50% default volume
   const bgMusicRef = useRef<HTMLAudioElement | null>(null);
   const greenSoundRef = useRef<HTMLAudioElement | null>(null);
   const timmySoundRef = useRef<HTMLAudioElement | null>(null);
