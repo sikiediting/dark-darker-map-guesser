@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Home, Trash2, Upload, Map, Settings, Eye, EyeOff } from 'lucide-react';
 import { db } from '../lib/firebase';
-import { collection, addDoc, getDocs, deleteDoc, doc, query, orderBy, where } from 'firebase/firestore';
+import { collection, addDoc, getDocs, deleteDoc, doc, query, where, orderBy } from 'firebase/firestore';
 import InteractiveMap from './InteractiveMap';
 
 const CAMPAIGNS = [
@@ -98,7 +98,6 @@ export default function AdminPage() {
     }
   }, [authenticated]);
 
-  // Auto-update grid size and map preview when sub-map changes
   useEffect(() => {
     const campaign = CAMPAIGNS.find(c => c.id === selectedCampaign);
     const subMap = campaign?.subMaps.find(s => s.id === selectedSubMap);
@@ -113,7 +112,6 @@ export default function AdminPage() {
     }
   }, [selectedCampaign, selectedSubMap, selectedDifficulty, masterMaps]);
 
-  // Update settingsEnabled when campaign/submap changes
   useEffect(() => {
     const key = `${settingsCampaign}-${settingsSubMap}`;
     setSettingsEnabled(mapSettings[key] !== false);
@@ -175,6 +173,34 @@ export default function AdminPage() {
     if (file) {
       setScreenshotFile(file);
     }
+  };
+
+  // NEW: Handle Ctrl+V Paste
+  const handlePaste = async (e: React.ClipboardEvent) => {
+    const items = e.clipboardData.items;
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.indexOf('image') !== -1) {
+        const blob = items[i].getAsFile();
+        if (blob) {
+          const file = new File([blob], `screenshot-${Date.now()}.png`, { type: blob.type });
+          setScreenshotFile(file);
+        }
+        break;
+      }
+    }
+  };
+
+  // NEW: Handle Drag & Drop
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    const files = e.dataTransfer.files;
+    if (files.length > 0 && files[0].type.indexOf('image') !== -1) {
+      setScreenshotFile(files[0]);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
   };
 
   const handleMapClick = (x: number, y: number) => {
@@ -258,7 +284,6 @@ export default function AdminPage() {
     const settingsKey = `${settingsCampaign}-${settingsSubMap}`;
     
     try {
-      // Delete existing settings for this map
       const existingQ = query(
         collection(db, 'map_settings'),
         where('campaign', '==', settingsCampaign),
@@ -269,7 +294,6 @@ export default function AdminPage() {
         await deleteDoc(doc(db, 'map_settings', docSnapshot.id));
       });
 
-      // Add new settings
       await addDoc(collection(db, 'map_settings'), {
         campaign: settingsCampaign,
         sub_map: settingsSubMap,
@@ -279,8 +303,6 @@ export default function AdminPage() {
 
       console.log(`Saved settings: ${settingsKey} = ${settingsEnabled}`);
       alert(`Map ${settingsEnabled ? 'enabled' : 'disabled'} successfully!`);
-      
-      // Reload settings
       loadMapSettings();
     } catch (error) {
       console.error('Error saving settings:', error);
@@ -387,7 +409,6 @@ export default function AdminPage() {
   const isMapEnabled = (campaign: string, subMap: string): boolean => {
     const key = `${campaign}-${subMap}`;
     const enabled = mapSettings[key];
-    // If no settings exist, map is enabled by default
     return enabled !== false;
   };
 
@@ -478,7 +499,6 @@ export default function AdminPage() {
         </div>
 
         {activeTab === 'settings' ? (
-          /* Map Settings Tab - Enable/Disable Maps */
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="bg-black/30 rounded-lg p-6 border border-gold/30">
               <h2 className="text-xl font-bold text-gold mb-4">Enable/Disable Maps</h2>
@@ -590,7 +610,6 @@ export default function AdminPage() {
             </div>
           </div>
         ) : activeTab === 'maps' ? (
-          /* Manage Maps Tab */
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="bg-black/30 rounded-lg p-6 border border-gold/30">
               <h2 className="text-xl font-bold text-gold mb-4">Upload Master Map</h2>
@@ -734,7 +753,6 @@ export default function AdminPage() {
             </div>
           </div>
         ) : (
-          /* Create Levels Tab */
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="bg-black/30 rounded-lg p-6 border border-gold/30">
               <h2 className="text-xl font-bold text-gold mb-4">Create New Level</h2>
@@ -840,21 +858,48 @@ export default function AdminPage() {
                   </div>
                 </div>
 
+                {/* NEW: Paste/Drop Zone for Screenshots */}
                 <div>
                   <label className="block text-white mb-2">Screenshot Image</label>
-                  <label className="flex items-center justify-center w-full px-4 py-3 bg-black/50 border-2 border-dashed border-gold/50 rounded-lg cursor-pointer hover:border-gold transition-colors min-h-[44px]">
-                    <Upload className="w-5 h-5 mr-2 text-gold" />
-                    <span className="text-gray-300">
-                      {screenshotFile ? screenshotFile.name : 'Choose screenshot'}
-                    </span>
+                  <div
+                    onPaste={handlePaste}
+                    onDrop={handleDrop}
+                    onDragOver={handleDragOver}
+                    className={`flex flex-col items-center justify-center w-full px-4 py-8 bg-black/50 border-2 border-dashed rounded-lg transition-all min-h-[150px] ${
+                      screenshotFile 
+                        ? 'border-green-500 bg-green-900/20' 
+                        : 'border-gold/50 hover:border-gold'
+                    }`}
+                  >
+                    {screenshotFile ? (
+                      <div className="text-center">
+                        <div className="text-green-400 font-semibold mb-2">✓ Screenshot Ready!</div>
+                        <div className="text-gray-400 text-sm">{screenshotFile.name}</div>
+                        <button
+                          type="button"
+                          onClick={() => setScreenshotFile(null)}
+                          className="mt-2 text-red-400 hover:text-red-300 text-sm"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="text-center">
+                        <Upload className="w-8 h-8 text-gold mx-auto mb-2" />
+                        <div className="text-white font-semibold">Paste or Drop Screenshot</div>
+                        <div className="text-gray-400 text-sm mt-1">
+                          Press <kbd className="px-2 py-1 bg-gray-700 rounded">Ctrl+V</kbd> or drag & drop
+                        </div>
+                      </div>
+                    )}
                     <input
                       type="file"
                       accept="image/*"
                       onChange={handleScreenshotFileChange}
                       className="hidden"
-                      required
+                      id="screenshot-upload"
                     />
-                  </label>
+                  </div>
                 </div>
 
                 {mapPreview && (
@@ -886,7 +931,7 @@ export default function AdminPage() {
 
                 <button
                   type="submit"
-                  disabled={loading || uploading || !mapPreview}
+                  disabled={loading || uploading || !mapPreview || !screenshotFile}
                   className="w-full py-3 bg-red text-white font-bold rounded-lg hover:bg-red/90 transition-all disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px]"
                 >
                   {uploading ? 'Uploading...' : loading ? 'Creating...' : 'Create Level'}
