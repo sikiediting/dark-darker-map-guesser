@@ -9,15 +9,30 @@ interface LeaderboardEntry {
   player_name: string;
   total_score: number;
   map_type: string;
+  campaign: string;
+  sub_map: string;
   rounds_completed: number;
   created_at: string;
 }
 
-const MAP_TYPES: { [key: string]: string } = {
-  ruins: 'Ancient Ruins',
-  goblin: 'Goblin Caves',
-  ice: 'Ice Caverns',
-  all: 'Mixed Maps',
+const CAMPAIGN_NAMES: { [key: string]: string } = {
+  'forgotten-castle': 'Forgotten Castle',
+  'goblin-caves': 'Goblin Caves',
+  'frost-mountain': 'Frost Mountain',
+  'blue-maelstrom': 'Blue Maelstrom',
+  'all': 'Mixed Maps',
+};
+
+const SUB_MAP_NAMES: { [key: string]: string } = {
+  ruins: 'The Ruins',
+  crypts: 'The Crypts',
+  inferno: 'The Inferno',
+  goblin: 'The Goblin Caves',
+  firedeep: 'The Firedeep',
+  ice: 'The Ice Cavern',
+  'ice-abyss': 'The Ice Abyss',
+  'ship-graveyard': 'The Ship Graveyard',
+  mixed: 'Mixed',
 };
 
 export default function HomePage() {
@@ -47,6 +62,16 @@ export default function HomePage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const getDisplayName = (entry: LeaderboardEntry) => {
+    if (entry.campaign === 'all') {
+      return 'Mixed Maps';
+    }
+    if (entry.sub_map === 'mixed') {
+      return `${CAMPAIGN_NAMES[entry.campaign]} (Mixed)`;
+    }
+    return `${SUB_MAP_NAMES[entry.sub_map] || entry.sub_map}`;
   };
 
   return (
@@ -86,15 +111,15 @@ export default function HomePage() {
               <div className="text-gray-400 text-sm">Max Score</div>
             </div>
             <div>
-              <div className="text-gold text-2xl font-bold">3</div>
-              <div className="text-gray-400 text-sm">Dungeons</div>
+              <div className="text-gold text-2xl font-bold">4</div>
+              <div className="text-gray-400 text-sm">Campaigns</div>
             </div>
           </div>
         </div>
 
         {/* Play Button */}
         <button
-          onClick={() => navigate('/game')}
+          onClick={() => navigate('/campaign')}
           className="w-full py-5 bg-red text-white text-2xl font-bold rounded-xl hover:bg-red/90 transition-all transform hover:scale-105 shadow-lg flex items-center justify-center gap-3 mb-8"
         >
           <Play className="w-8 h-8" />
@@ -141,7 +166,7 @@ export default function HomePage() {
                     <div>
                       <div className="font-semibold text-white">{entry.player_name}</div>
                       <div className="text-xs text-gray-400">
-                        {MAP_TYPES[entry.map_type] || entry.map_type} • {entry.rounds_completed} rounds
+                        {getDisplayName(entry)} • {entry.rounds_completed} rounds
                       </div>
                     </div>
                   </div>
