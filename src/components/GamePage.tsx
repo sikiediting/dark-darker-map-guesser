@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Home, RotateCcw, Play, MapIcon, Maximize2, Minimize2, Trophy, Target, Volume2, VolumeX, Clock } from 'lucide-react';
+import { Home, RotateCcw, Play, MapIcon, Maximize2, Minimize2, Trophy, Target, Volume2, VolumeX, Clock, Flag, X } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { collection, getDocs, addDoc, query, where } from 'firebase/firestore';
 import { calculateDistancePercent, calculateDistanceMeters, calculateScore, getScoreColor, getScoreBorderColor } from '../lib/utils';
@@ -76,6 +76,11 @@ export default function GamePage() {
   const [timerRunning, setTimerRunning] = useState<boolean>(false);
   const timerRef = useRef<number | null>(null);
 
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [reportType, setReportType] = useState<'coordinates' | 'screenshot' | 'other'>('coordinates');
+  const [reportComment, setReportComment] = useState('');
+  const [submittingReport, setSubmittingReport] = useState(false);
+
   useEffect(() => {
     if (location.state?.campaign && location.state?.subMap) {
       setSelectedCampaign(location.state.campaign);
@@ -132,7 +137,6 @@ export default function GamePage() {
     }
   }, [isMuted, gameState]);
 
-  // Timer countdown
   useEffect(() => {
     if (timerRunning && timeLeft > 0) {
       timerRef.current = window.setTimeout(() => {
@@ -149,7 +153,6 @@ export default function GamePage() {
     };
   }, [timeLeft, timerRunning]);
 
-  // Timer sound & visual urgency (last 5 seconds)
   useEffect(() => {
     if (timerSoundRef.current) {
       if (timeLeft <= 5 && timeLeft > 0 && timerRunning && !isMuted) {
@@ -311,6 +314,40 @@ export default function GamePage() {
     const newTotal = totalScore + calculatedScore;
     setTotalScore(newTotal);
     setRoundScores([...roundScores, calculatedScore]);
+  };
+
+  const handleReportSubmit = async () => {
+    if (!level) return;
+    
+    setSubmittingReport(true);
+    try {
+      await addDoc(collection(db, 'reports'), {
+        level_id: level.id,
+        level_name: level.map_name,
+        campaign: level.campaign,
+        sub_map: level.sub_map,
+        difficulty: level.difficulty,
+        screenshot_url: level.screenshot_url,
+        map_image_url: level.map_image_url,
+        target_x: level.target_x,
+        target_y: level.target_y,
+        report_type: reportType,
+        comment: reportComment,
+        player_guess_x: userGuess?.x,
+        player_guess_y: userGuess?.y,
+        distance_meters: distanceMeters,
+        status: 'pending',
+        created_at: new Date().toISOString(),
+      });
+      alert('Thank you! Report submitted for review.');
+      setShowReportModal(false);
+      setReportComment('');
+    } catch (error) {
+      console.error('Error submitting report:', error);
+      alert('Failed to submit report. Please try again.');
+    } finally {
+      setSubmittingReport(false);
+    }
   };
 
   const handleNextRound = () => {
@@ -537,7 +574,6 @@ export default function GamePage() {
 
   return (
     <div className="min-h-screen bg-dark text-white relative">
-      {/* Urgency Overlay - Red Pulse (Last 5 Seconds) */}
       {isUrgent && (
         <div className="fixed inset-0 z-[5] pointer-events-none animate-pulse" style={{
           backgroundColor: 'rgba(239, 68, 68, 0.15)',
@@ -633,10 +669,108 @@ export default function GamePage() {
             {distanceMeters !== 9999 && distanceMeters !== null && distanceMeters <= 5 && distanceMeters > 2 && <p className="text-green-300 font-bold text-2xl animate-pulse">🔥 Excellent!</p>}
             {distanceMeters !== 9999 && distanceMeters !== null && distanceMeters <= 10 && distanceMeters > 5 && <p className="text-yellow-400 font-bold text-2xl animate-pulse">👍 Good!</p>}
             {distanceMeters === 9999 && <p className="text-red-400 font-bold text-2xl animate-pulse">⏰ Time's Up!</p>}
-            <button onClick={handleNextRound} className="w-full py-5 bg-red text-white text-xl font-bold rounded-lg hover:bg-red/90 transition-all flex items-center justify-center gap-3">
+            
+            {/* Next Round Button - Primary Action (Big & Red) */}
+            <button onClick={handleNextRound} className="w-full py-5 bg-red text-white text-xl font-bold rounded-lg hover:bg-red/90 transition-all flex items-center justify-center gap-3 shadow-lg">
               {currentRound >= TOTAL_ROUNDS ? 'See Final Results' : 'Next Round'}
               <Play className="w-6 h-6" />
             </button>
+            
+            {/* Report Button - Subtle Secondary Action (Small & Gray/Red) */}
+            <div className="pt-3">
+              <button
+                onClick={() => setShowReportModal(true)}
+                className="w-full py-2 text-gray-500 hover:text-red-400 transition-all flex items-center justify-center gap-1.5 text-xs"
+              >
+                <Flag className="w-3.5 h-3.5" />
+                Report Issue
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Report Modal */}
+      {showReportModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80">
+          <div className="bg-gray-900 border-2 border-gold rounded-2xl p-6 max-w-md w-full">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold text-gold">Report Issue</h3>
+              <button
+                onClick={() => setShowReportModal(false)}
+                className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-gray-400" />
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-white mb-2">Issue Type</label>
+                <div className="space-y-2">
+                  <button
+                    onClick={() => setReportType('coordinates')}
+                    className={`w-full p-3 rounded-lg border text-left transition-all ${
+                      reportType === 'coordinates'
+                        ? 'border-gold bg-gold/20 text-white'
+                        : 'border-gray-600 bg-black/50 text-gray-400'
+                    }`}
+                  >
+                    📍 Wrong Coordinates
+                    <p className="text-xs text-gray-500 mt-1">Target pin is in the wrong location</p>
+                  </button>
+                  <button
+                    onClick={() => setReportType('screenshot')}
+                    className={`w-full p-3 rounded-lg border text-left transition-all ${
+                      reportType === 'screenshot'
+                        ? 'border-gold bg-gold/20 text-white'
+                        : 'border-gray-600 bg-black/50 text-gray-400'
+                    }`}
+                  >
+                    🖼️ Bad Screenshot
+                    <p className="text-xs text-gray-500 mt-1">UI visible, wrong image, or quality issue</p>
+                  </button>
+                  <button
+                    onClick={() => setReportType('other')}
+                    className={`w-full p-3 rounded-lg border text-left transition-all ${
+                      reportType === 'other'
+                        ? 'border-gold bg-gold/20 text-white'
+                        : 'border-gray-600 bg-black/50 text-gray-400'
+                    }`}
+                  >
+                    📝 Other
+                    <p className="text-xs text-gray-500 mt-1">Something else is wrong</p>
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-white mb-2">Comment (Optional)</label>
+                <textarea
+                  value={reportComment}
+                  onChange={(e) => setReportComment(e.target.value)}
+                  placeholder="Describe the issue..."
+                  rows={3}
+                  className="w-full px-4 py-3 bg-black/50 border border-gold/50 rounded-lg text-white focus:outline-none focus:border-gold"
+                />
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowReportModal(false)}
+                  className="flex-1 py-3 bg-gray-700 text-white font-bold rounded-lg hover:bg-gray-600 transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleReportSubmit}
+                  disabled={submittingReport}
+                  className="flex-1 py-3 bg-gold text-dark font-bold rounded-lg hover:bg-gold/90 transition-all disabled:opacity-50"
+                >
+                  {submittingReport ? 'Submitting...' : 'Submit Report'}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

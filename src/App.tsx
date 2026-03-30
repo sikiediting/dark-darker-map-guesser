@@ -4,6 +4,7 @@ import GamePage from './components/GamePage';
 import AdminPage from './components/AdminPage';
 import LeaderboardPage from './components/LeaderboardPage';
 import CampaignSelect from './components/CampaignSelect';
+import LevelGallery from './components/LevelGallery';
 
 function App() {
   return (
@@ -13,6 +14,7 @@ function App() {
         <Route path="/campaign" element={<CampaignSelect />} />
         <Route path="/game" element={<GamePage />} />
         <Route path="/admin" element={<AdminPage />} />
+        <Route path="/admin/gallery" element={<LevelGallery />} />
         <Route path="/leaderboard" element={<LeaderboardPage />} />
       </Routes>
     </BrowserRouter>

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Home, Trash2, Upload, Map, Settings, Eye, EyeOff } from 'lucide-react';
+import { Home, Trash2, Upload, Map, Settings, Eye, EyeOff, Flag, CheckCircle, XCircle } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { collection, addDoc, getDocs, deleteDoc, doc, query, where, orderBy } from 'firebase/firestore';
 import InteractiveMap from './InteractiveMap';
@@ -60,13 +60,13 @@ export default function AdminPage() {
   const navigate = useNavigate();
   const [authenticated, setAuthenticated] = useState(false);
   const [password, setPassword] = useState('');
-  const [activeTab, setActiveTab] = useState<'levels' | 'maps' | 'settings'>('levels');
+  const [activeTab, setActiveTab] = useState<'levels' | 'maps' | 'settings' | 'reports'>('levels');
   const [levels, setLevels] = useState<any[]>([]);
+  const [reports, setReports] = useState<any[]>([]);
   const [masterMaps, setMasterMaps] = useState<{ [key: string]: any }>({});
   const [mapSettings, setMapSettings] = useState<{ [key: string]: boolean }>({});
   const [loading, setLoading] = useState(false);
 
-  // Level creation state
   const [mapName, setMapName] = useState('');
   const [selectedCampaign, setSelectedCampaign] = useState('forgotten-castle');
   const [selectedSubMap, setSelectedSubMap] = useState('ruins');
@@ -77,7 +77,6 @@ export default function AdminPage() {
   const [targetLocation, setTargetLocation] = useState<{ x: number; y: number } | null>(null);
   const [uploading, setUploading] = useState(false);
 
-  // Map management state
   const [mapUploadFile, setMapUploadFile] = useState<File | null>(null);
   const [mapUploadCampaign, setMapUploadCampaign] = useState('forgotten-castle');
   const [mapUploadSubMap, setMapUploadSubMap] = useState('ruins');
@@ -85,7 +84,6 @@ export default function AdminPage() {
   const [mapUploadPreview, setMapUploadPreview] = useState<string>('');
   const [uploadingMap, setUploadingMap] = useState(false);
 
-  // Map settings state (enable/disable)
   const [settingsCampaign, setSettingsCampaign] = useState('forgotten-castle');
   const [settingsSubMap, setSettingsSubMap] = useState('ruins');
   const [settingsEnabled, setSettingsEnabled] = useState(true);
@@ -93,6 +91,7 @@ export default function AdminPage() {
   useEffect(() => {
     if (authenticated) {
       loadLevels();
+      loadReports();
       loadMasterMaps();
       loadMapSettings();
     }
@@ -137,6 +136,17 @@ export default function AdminPage() {
     }
   };
 
+  const loadReports = async () => {
+    try {
+      const q = query(collection(db, 'reports'), orderBy('created_at', 'desc'));
+      const querySnapshot = await getDocs(q);
+      const reportsData = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setReports(reportsData);
+    } catch (error) {
+      console.error('Error loading reports:', error);
+    }
+  };
+
   const loadMasterMaps = async () => {
     try {
       const querySnapshot = await getDocs(collection(db, 'maps'));
@@ -175,7 +185,6 @@ export default function AdminPage() {
     }
   };
 
-  // NEW: Handle Ctrl+V Paste
   const handlePaste = async (e: React.ClipboardEvent) => {
     const items = e.clipboardData.items;
     for (let i = 0; i < items.length; i++) {
@@ -190,7 +199,6 @@ export default function AdminPage() {
     }
   };
 
-  // NEW: Handle Drag & Drop
   const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     const files = e.dataTransfer.files;
@@ -402,6 +410,17 @@ export default function AdminPage() {
     }
   };
 
+  const handleReportAction = async (reportId: string, action: 'fixed' | 'ignored') => {
+    try {
+      await deleteDoc(doc(db, 'reports', reportId));
+      alert(`Report marked as ${action}!`);
+      loadReports();
+    } catch (error) {
+      console.error('Error updating report:', error);
+      alert('Error updating report');
+    }
+  };
+
   const getCurrentCampaign = () => {
     return CAMPAIGNS.find(c => c.id === selectedCampaign);
   };
@@ -462,7 +481,7 @@ export default function AdminPage() {
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-2 mb-6">
+        <div className="flex gap-2 mb-6 flex-wrap">
           <button
             onClick={() => setActiveTab('levels')}
             className={`px-6 py-3 rounded-lg font-semibold transition-all flex items-center gap-2 ${
@@ -496,9 +515,125 @@ export default function AdminPage() {
             <Settings className="w-5 h-5" />
             Map Settings
           </button>
+          <button
+            onClick={() => navigate('/admin/gallery')}
+            className="px-6 py-3 rounded-lg font-semibold transition-all flex items-center gap-2 bg-black/50 text-gray-400 hover:text-white"
+          >
+            <Eye className="w-5 h-5" />
+            View Gallery
+          </button>
+          <button
+            onClick={() => setActiveTab('reports')}
+            className={`px-6 py-3 rounded-lg font-semibold transition-all flex items-center gap-2 ${
+              activeTab === 'reports'
+                ? 'bg-gold text-dark'
+                : 'bg-black/50 text-gray-400 hover:text-white'
+            }`}
+          >
+            <Flag className="w-5 h-5" />
+            Reports {reports.filter(r => r.status === 'pending').length > 0 && (
+              <span className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">
+                {reports.filter(r => r.status === 'pending').length}
+              </span>
+            )}
+          </button>
         </div>
 
-        {activeTab === 'settings' ? (
+        {activeTab === 'reports' ? (
+          /* Reports Tab */
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-bold text-gold">Player Reports ({reports.filter(r => r.status === 'pending').length} pending)</h2>
+              <button
+                onClick={loadReports}
+                className="px-4 py-2 bg-gold/20 text-gold rounded-lg hover:bg-gold/30 transition-all"
+              >
+                Refresh
+              </button>
+            </div>
+
+            {reports.length === 0 ? (
+              <div className="text-center text-gray-400 py-20">
+                <Flag className="w-16 h-16 mx-auto mb-4 opacity-50" />
+                <p>No reports yet</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {reports.map((report) => (
+                  <div
+                    key={report.id}
+                    className={`bg-black/50 rounded-lg border p-4 ${
+                      report.status === 'pending' ? 'border-orange-500/50' : 'border-gray-600'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <Flag className={`w-5 h-5 ${
+                          report.report_type === 'coordinates' ? 'text-red-400' :
+                          report.report_type === 'screenshot' ? 'text-yellow-400' : 'text-gray-400'
+                        }`} />
+                        <span className="font-semibold text-white capitalize">{report.report_type} Issue</span>
+                      </div>
+                      <span className={`text-xs px-2 py-1 rounded ${
+                        report.status === 'pending' ? 'bg-orange-500/20 text-orange-400' : 'bg-gray-500/20 text-gray-400'
+                      }`}>
+                        {report.status}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3 mb-3">
+                      <div className="aspect-video bg-gray-900 rounded overflow-hidden">
+                        <img src={report.screenshot_url} alt="Screenshot" className="w-full h-full object-cover" />
+                      </div>
+                      <div className="aspect-video bg-gray-900 rounded overflow-hidden">
+                        <img src={report.map_image_url} alt="Map" className="w-full h-full object-cover" />
+                      </div>
+                    </div>
+
+                    <div className="text-sm text-gray-400 mb-3">
+                      <div><span className="text-white">Level:</span> {report.level_name}</div>
+                      <div><span className="text-white">Campaign:</span> {report.campaign}</div>
+                      <div><span className="text-white">Sub-Map:</span> {report.sub_map}</div>
+                      <div><span className="text-white">Difficulty:</span> {report.difficulty}</div>
+                      {report.comment && (
+                        <div className="mt-2 p-2 bg-black/50 rounded">
+                          <span className="text-white">Comment:</span> {report.comment}
+                        </div>
+                      )}
+                    </div>
+
+                    {report.status === 'pending' && (
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleReportAction(report.id, 'fixed')}
+                          className="flex-1 py-2 bg-green-600 hover:bg-green-700 rounded-lg transition-all flex items-center justify-center gap-2 text-sm font-semibold"
+                        >
+                          <CheckCircle className="w-4 h-4" />
+                          Fixed
+                        </button>
+                        <button
+                          onClick={() => handleReportAction(report.id, 'ignored')}
+                          className="flex-1 py-2 bg-gray-600 hover:bg-gray-700 rounded-lg transition-all flex items-center justify-center gap-2 text-sm font-semibold"
+                        >
+                          <XCircle className="w-4 h-4" />
+                          Ignore
+                        </button>
+                        <button
+                          onClick={() => {
+                            navigate('/admin/gallery');
+                          }}
+                          className="px-4 py-2 bg-gold/20 text-gold rounded-lg hover:bg-gold/30 transition-all text-sm font-semibold"
+                        >
+                          Find in Gallery
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : activeTab === 'settings' ? (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="bg-black/30 rounded-lg p-6 border border-gold/30">
               <h2 className="text-xl font-bold text-gold mb-4">Enable/Disable Maps</h2>
@@ -858,7 +993,6 @@ export default function AdminPage() {
                   </div>
                 </div>
 
-                {/* NEW: Paste/Drop Zone for Screenshots */}
                 <div>
                   <label className="block text-white mb-2">Screenshot Image</label>
                   <div
