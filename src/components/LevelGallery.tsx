@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Home, Trash2, Eye, Grid, List } from 'lucide-react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Home, Trash2, Eye, Grid, List, Edit2, CheckCircle, XCircle } from 'lucide-react';
 import { db } from '../lib/firebase';
-import { collection, getDocs, deleteDoc, doc, query, orderBy } from 'firebase/firestore';
+import { collection, getDocs, deleteDoc, doc, query, orderBy, updateDoc } from 'firebase/firestore';
+import InteractiveMap from './InteractiveMap';
 
 interface Level {
   id: string;
@@ -11,6 +12,9 @@ interface Level {
   sub_map: string;
   difficulty: string;
   screenshot_url: string;
+  map_image_url: string;
+  target_x: number;
+  target_y: number;
   grid_size: number;
   map_scale_meters: number;
   created_at: string;
@@ -24,15 +28,41 @@ const DIFFICULTY_COLORS: { [key: string]: string } = {
 
 export default function LevelGallery() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [levels, setLevels] = useState<Level[]>([]);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [filterDifficulty, setFilterDifficulty] = useState<string>('all');
   const [filterCampaign, setFilterCampaign] = useState<string>('all');
+  
+  // Edit modal state
+  const [editingLevel, setEditingLevel] = useState<Level | null>(null);
+  const [editTargetX, setEditTargetX] = useState<number>(0);
+  const [editTargetY, setEditTargetY] = useState<number>(0);
+  const [updating, setUpdating] = useState(false);
+
+  // Highlight level from report
+  const highlightLevelId = searchParams.get('levelId');
 
   useEffect(() => {
     loadLevels();
   }, []);
+
+  useEffect(() => {
+    // If there's a highlightLevelId, scroll to it
+    if (highlightLevelId) {
+      setTimeout(() => {
+        const element = document.getElementById(`level-${highlightLevelId}`);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          element.classList.add('ring-4', 'ring-red-500');
+          setTimeout(() => {
+            element.classList.remove('ring-4', 'ring-red-500');
+          }, 3000);
+        }
+      }, 500);
+    }
+  }, [highlightLevelId, levels]);
 
   const loadLevels = async () => {
     try {
@@ -57,6 +87,37 @@ export default function LevelGallery() {
       console.error('Error deleting level:', error);
       alert('Error deleting level');
     }
+  };
+
+  const handleEditClick = (level: Level) => {
+    setEditingLevel(level);
+    setEditTargetX(level.target_x);
+    setEditTargetY(level.target_y);
+  };
+
+  const handleUpdateCoordinates = async () => {
+    if (!editingLevel) return;
+    
+    setUpdating(true);
+    try {
+      await updateDoc(doc(db, 'levels', editingLevel.id), {
+        target_x: editTargetX,
+        target_y: editTargetY,
+      });
+      alert('Coordinates updated successfully!');
+      setEditingLevel(null);
+      loadLevels();
+    } catch (error) {
+      console.error('Error updating coordinates:', error);
+      alert('Error updating coordinates');
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handleMapClick = (x: number, y: number) => {
+    setEditTargetX(x);
+    setEditTargetY(y);
   };
 
   const filteredLevels = levels.filter(level => {
@@ -193,7 +254,10 @@ export default function LevelGallery() {
             {filteredLevels.map((level) => (
               <div
                 key={level.id}
-                className="bg-black/50 rounded-lg border border-gold/20 overflow-hidden group"
+                id={`level-${level.id}`}
+                className={`bg-black/50 rounded-lg border border-gold/20 overflow-hidden group transition-all ${
+                  highlightLevelId === level.id ? 'ring-4 ring-red-500' : ''
+                }`}
               >
                 {/* Screenshot Preview */}
                 <div className="relative aspect-video bg-gray-900">
@@ -221,6 +285,13 @@ export default function LevelGallery() {
                       <Eye className="w-5 h-5 text-white" />
                     </a>
                     <button
+                      onClick={() => handleEditClick(level)}
+                      className="p-2 bg-blue-500/50 rounded-lg hover:bg-blue-500/70 transition-colors"
+                      title="Edit Coordinates"
+                    >
+                      <Edit2 className="w-5 h-5 text-white" />
+                    </button>
+                    <button
                       onClick={() => handleDelete(level.id)}
                       className="p-2 bg-red-500/50 rounded-lg hover:bg-red-500/70 transition-colors"
                       title="Delete"
@@ -245,7 +316,10 @@ export default function LevelGallery() {
             {filteredLevels.map((level) => (
               <div
                 key={level.id}
-                className="bg-black/50 rounded-lg border border-gold/20 p-3 flex items-center gap-4"
+                id={`level-${level.id}`}
+                className={`bg-black/50 rounded-lg border border-gold/20 p-3 flex items-center gap-4 ${
+                  highlightLevelId === level.id ? 'ring-4 ring-red-500' : ''
+                }`}
               >
                 {/* Screenshot Thumbnail */}
                 <div className="relative w-32 h-20 bg-gray-900 rounded overflow-hidden flex-shrink-0">
@@ -272,6 +346,13 @@ export default function LevelGallery() {
 
                 {/* Actions */}
                 <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handleEditClick(level)}
+                    className="p-2 bg-blue-500/50 rounded-lg hover:bg-blue-500/70 transition-colors"
+                    title="Edit Coordinates"
+                  >
+                    <Edit2 className="w-5 h-5 text-white" />
+                  </button>
                   <a
                     href={level.screenshot_url}
                     target="_blank"
@@ -294,6 +375,68 @@ export default function LevelGallery() {
           </div>
         )}
       </div>
+
+      {/* Edit Coordinates Modal */}
+      {editingLevel && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80">
+          <div className="bg-gray-900 border-2 border-gold rounded-2xl p-6 max-w-4xl w-full">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold text-gold">Edit Level - {editingLevel.map_name}</h3>
+              <button
+                onClick={() => setEditingLevel(null)}
+                className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+              >
+                <XCircle className="w-5 h-5 text-gray-400" />
+              </button>
+            </div>
+            
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Screenshot */}
+              <div>
+                <label className="block text-white mb-2">Screenshot</label>
+                <img src={editingLevel.screenshot_url} alt="Screenshot" className="w-full rounded-lg border border-gold/30" />
+              </div>
+
+              {/* Map with clickable target */}
+              <div>
+                <label className="block text-white mb-2">
+                  Click on map to set new target location
+                  <span className="text-green-400 ml-2">
+                    ✓ ({editTargetX.toFixed(1)}%, {editTargetY.toFixed(1)}%)
+                  </span>
+                </label>
+                <div className="h-[400px] border border-gold/30 rounded-lg overflow-hidden">
+                  <InteractiveMap
+                    imageUrl={editingLevel.map_image_url}
+                    onMapClick={handleMapClick}
+                    targetPin={{ x: editTargetX, y: editTargetY, color: '#ef4444' }}
+                    disabled={false}
+                    showDistance={false}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex gap-3 mt-6 pt-6 border-t border-gold/30">
+              <button
+                onClick={() => setEditingLevel(null)}
+                className="flex-1 py-3 bg-gray-700 text-white font-bold rounded-lg hover:bg-gray-600 transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleUpdateCoordinates}
+                disabled={updating}
+                className="flex-1 py-3 bg-gold text-dark font-bold rounded-lg hover:bg-gold/90 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                <CheckCircle className="w-5 h-5" />
+                {updating ? 'Updating...' : 'Update Coordinates'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

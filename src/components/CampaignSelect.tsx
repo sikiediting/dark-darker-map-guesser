@@ -76,7 +76,6 @@ export default function CampaignSelect() {
 
   const isMapEnabled = (campaign: string, subMap: string): boolean => {
     const key = `${campaign}-${subMap}`;
-    // If no settings exist, map is enabled by default
     return mapSettings[key] !== false;
   };
 
@@ -201,11 +200,11 @@ export default function CampaignSelect() {
                             )}
                           </div>
                           <div className="flex-1 text-left">
-                            <span className={enabled ? 'text-white' : 'text-gray-500'}>
+                            <span className={enabled ? 'text-white' : 'text-gray-400'}>
                               {subMap.name}
                             </span>
                             {!enabled && (
-                              <p className="text-xs text-red-400">🚧 Under Construction</p>
+                              <p className="text-xs text-orange-400 font-semibold">🚧 Under Construction</p>
                             )}
                           </div>
                         </button>
@@ -222,7 +221,7 @@ export default function CampaignSelect() {
         <div className="mt-8 text-center text-gray-500 text-sm">
           <p>📍 Hover over a campaign to see available maps</p>
           <p>🎯 Select a specific map or play mixed maps from that campaign</p>
-          <p className="text-red-400 mt-2">🚧 Maps marked "Under Construction" are temporarily unavailable</p>
+          <p className="text-orange-400 mt-2">🚧 Maps marked "Under Construction" are temporarily unavailable</p>
         </div>
       </div>
     </div>

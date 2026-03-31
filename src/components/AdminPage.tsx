@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Home, Trash2, Upload, Map, Settings, Eye, EyeOff, Flag, CheckCircle, XCircle } from 'lucide-react';
+import { Home, Trash2, Upload, Map, Settings, Eye, EyeOff, Flag, CheckCircle, XCircle, Edit2 } from 'lucide-react';
 import { db } from '../lib/firebase';
 import { collection, addDoc, getDocs, deleteDoc, doc, query, where, orderBy } from 'firebase/firestore';
 import InteractiveMap from './InteractiveMap';
@@ -620,11 +620,12 @@ export default function AdminPage() {
                         </button>
                         <button
                           onClick={() => {
-                            navigate('/admin/gallery');
+                            navigate(`/admin/gallery?levelId=${report.level_id}`);
                           }}
-                          className="px-4 py-2 bg-gold/20 text-gold rounded-lg hover:bg-gold/30 transition-all text-sm font-semibold"
+                          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-all text-sm font-semibold flex items-center justify-center gap-2"
                         >
-                          Find in Gallery
+                          <Edit2 className="w-4 h-4" />
+                          Fix in Gallery
                         </button>
                       </div>
                     )}
