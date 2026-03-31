@@ -232,12 +232,28 @@ export default function GamePage() {
       const levelsRef = collection(db, 'levels');
       let q;
 
-      if (selectedCampaign !== 'all' && selectedSubMap !== 'mixed') {
-        q = query(levelsRef, where('campaign', '==', selectedCampaign), where('sub_map', '==', selectedSubMap));
+      // FIXED: Filter by difficulty for Mixed Maps
+      if (selectedCampaign === 'all' && selectedSubMap === 'mixed') {
+        // Mixed Maps - filter by difficulty only
+        q = query(levelsRef, where('difficulty', '==', diffToUse));
+      } else if (selectedCampaign !== 'all' && selectedSubMap !== 'mixed') {
+        // Specific sub-map - filter by campaign, sub-map, and difficulty
+        q = query(
+          levelsRef, 
+          where('campaign', '==', selectedCampaign), 
+          where('sub_map', '==', selectedSubMap),
+          where('difficulty', '==', diffToUse)
+        );
       } else if (selectedCampaign !== 'all' && selectedSubMap === 'mixed') {
-        q = query(levelsRef, where('campaign', '==', selectedCampaign));
+        // Mixed campaign - filter by campaign and difficulty
+        q = query(
+          levelsRef, 
+          where('campaign', '==', selectedCampaign),
+          where('difficulty', '==', diffToUse)
+        );
       } else {
-        q = levelsRef;
+        // Fallback - filter by difficulty
+        q = query(levelsRef, where('difficulty', '==', diffToUse));
       }
 
       const querySnapshot = await getDocs(q);
